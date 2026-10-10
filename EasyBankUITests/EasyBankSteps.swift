@@ -79,7 +79,68 @@ final class EasyBankSteps {
         }
     }
 
-    // MARK: - Password Visibility
+    // MARK: - Password Helpers
+
+    private func typePasswordCharacterByCharacter(
+        _ password: String,
+        field: XCUIElement
+    ) {
+        var expectedValue = ""
+
+        for character in password {
+            guard field.waitForExistence(timeout: 10) else {
+                XCTFail("Password field disappeared")
+                return
+            }
+
+            guard field.isHittable else {
+                XCTFail("Password field is not hittable")
+                return
+            }
+
+            let currentValue = field.value as? String ?? ""
+
+            if currentValue != expectedValue {
+                XCTFail(
+                    "Password value changed unexpectedly. " +
+                    "Expected \(expectedValue.count) characters, " +
+                    "found \(currentValue.count)"
+                )
+                return
+            }
+
+            // Restore focus if keyboard was dismissed
+            if !app.keyboards.firstMatch.exists {
+                field.tap()
+            }
+
+            field.typeText(String(character))
+            expectedValue.append(character)
+
+            // Re-query the field after each character
+            guard field.waitForExistence(timeout: 10) else {
+                XCTFail("Password field disappeared after typing")
+                return
+            }
+
+            let actualValue = field.value as? String ?? ""
+
+            guard actualValue == expectedValue else {
+                XCTFail(
+                    "Password typing failed after " +
+                    "\(expectedValue.count) characters. " +
+                    "Actual length: \(actualValue.count)"
+                )
+                return
+            }
+        }
+
+        XCTAssertEqual(
+            field.value as? String,
+            password,
+            "Complete password was not entered"
+        )
+    }
 
     private func enterVisiblePassword(
         _ password: String,
@@ -92,31 +153,21 @@ final class EasyBankSteps {
             return
         }
 
-        // Focus password field
         guard tap(secureField) else { return }
 
-        // Dismiss iOS password suggestion
         dismissStrongPasswordPromptIfPresent()
 
-        // Locate the visibility control
-        guard visibilityButton.waitForExistence(timeout: 10) else {
+        guard visibilityButton.waitForExistence(timeout: 10),
+              visibilityButton.isHittable else {
             XCTFail("Password visibility button was not found")
             return
         }
 
-        guard visibilityButton.isHittable else {
-            XCTFail("Password visibility button is not hittable")
-            return
-        }
-
-        // Turn password visibility on
+        // Enable password visibility
         visibilityButton.tap()
 
-        // Use the field after visibility changes
         guard visibleField.waitForExistence(timeout: 10) else {
-            XCTFail(
-                "Password did not become a visible TextField"
-            )
+            XCTFail("Password did not become a TextField")
             return
         }
 
@@ -125,15 +176,12 @@ final class EasyBankSteps {
             return
         }
 
-        // Type password into visible field
         visibleField.tap()
-        visibleField.typeText(password)
 
-        // Verify the actual entered value
-        XCTAssertEqual(
-            visibleField.value as? String,
+        // Type and verify every character
+        typePasswordCharacterByCharacter(
             password,
-            "Password was not entered correctly"
+            field: visibleField
         )
     }
 
@@ -267,7 +315,7 @@ final class EasyBankSteps {
         submitRegistration()
     }
 
-    // MARK: - Home Assertions
+    // MARK: - Home
 
     func verifyHomeScreen() {
         XCTAssertTrue(
