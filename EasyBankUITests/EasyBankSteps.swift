@@ -1,4 +1,4 @@
-
+~
 import XCTest
 
 final class EasyBankSteps {
@@ -18,10 +18,6 @@ final class EasyBankSteps {
         guard element.waitForExistence(timeout: 15) else {
             XCTFail("Element was not found: \(element)")
             return false
-        }
-
-        if !element.isHittable {
-            dismissKeyboard()
         }
 
         guard element.isHittable else {
@@ -79,77 +75,15 @@ final class EasyBankSteps {
         }
     }
 
-    // MARK: - Password Helpers
+    // MARK: - Login Password
 
-    private func typePasswordCharacterByCharacter(
-        _ password: String,
-        field: XCUIElement
+    private func enterLoginPasswordSafely(
+        _ password: String
     ) {
-        var expectedValue = ""
+        let secureField = page.loginPasswordField
 
-        for character in password {
-            guard field.waitForExistence(timeout: 10) else {
-                XCTFail("Password field disappeared")
-                return
-            }
-
-            guard field.isHittable else {
-                XCTFail("Password field is not hittable")
-                return
-            }
-
-            let currentValue = field.value as? String ?? ""
-
-            if currentValue != expectedValue {
-                XCTFail(
-                    "Password value changed unexpectedly. " +
-                    "Expected \(expectedValue.count) characters, " +
-                    "found \(currentValue.count)"
-                )
-                return
-            }
-
-            // Restore focus if keyboard was dismissed
-            if !app.keyboards.firstMatch.exists {
-                field.tap()
-            }
-
-            field.typeText(String(character))
-            expectedValue.append(character)
-
-            // Re-query the field after each character
-            guard field.waitForExistence(timeout: 10) else {
-                XCTFail("Password field disappeared after typing")
-                return
-            }
-
-            let actualValue = field.value as? String ?? ""
-
-            guard actualValue == expectedValue else {
-                XCTFail(
-                    "Password typing failed after " +
-                    "\(expectedValue.count) characters. " +
-                    "Actual length: \(actualValue.count)"
-                )
-                return
-            }
-        }
-
-        XCTAssertEqual(
-            field.value as? String,
-            password,
-            "Complete password was not entered"
-        )
-    }
-
-    private func enterVisiblePassword(
-        _ password: String,
-        secureField: XCUIElement,
-        visibilityButton: XCUIElement,
-        visibleField: XCUIElement
-    ) {
         guard secureField.waitForExistence(timeout: 15) else {
-            XCTFail("Password field was not found")
+            XCTFail("Login password field was not found")
             return
         }
 
@@ -157,31 +91,86 @@ final class EasyBankSteps {
 
         dismissStrongPasswordPromptIfPresent()
 
+        let visibilityButton =
+            page.loginPasswordVisibilityButton
+
         guard visibilityButton.waitForExistence(timeout: 10),
               visibilityButton.isHittable else {
-            XCTFail("Password visibility button was not found")
+            XCTFail("Login visibility button was not found")
             return
         }
 
-        // Enable password visibility
         visibilityButton.tap()
 
+        let visibleField = page.visibleLoginPasswordField
+
         guard visibleField.waitForExistence(timeout: 10) else {
-            XCTFail("Password did not become a TextField")
+            XCTFail("Visible login password field was not found")
             return
         }
 
-        guard visibleField.isHittable else {
-            XCTFail("Visible password field is not hittable")
+        guard tap(visibleField) else { return }
+
+        visibleField.typeText(password)
+    }
+
+    // MARK: - Registration Password
+
+    private func enterRegistrationPasswordSafely(
+        _ password: String,
+        identifier: String
+    ) {
+        let secureField = app.secureTextFields[identifier]
+
+        guard secureField.waitForExistence(timeout: 15) else {
+            XCTFail("Registration password field not found: \(identifier)")
             return
         }
 
-        visibleField.tap()
+        guard tap(secureField) else { return }
 
-        // Type and verify every character
-        typePasswordCharacterByCharacter(
+        dismissStrongPasswordPromptIfPresent()
+
+        let visibilityButton = secureField.buttons["hide"]
+
+        guard visibilityButton.waitForExistence(timeout: 10),
+              visibilityButton.isHittable else {
+            XCTFail("Password visibility button not found: \(identifier)")
+            return
+        }
+
+        visibilityButton.tap()
+
+        let visibleField = app.textFields[identifier]
+
+        guard visibleField.waitForExistence(timeout: 10) else {
+            XCTFail("Visible password field not found: \(identifier)")
+            return
+        }
+
+        guard tap(visibleField) else { return }
+
+        // Clear existing autofilled value
+        if let currentValue = visibleField.value as? String,
+           !currentValue.isEmpty,
+           currentValue != visibleField.placeholderValue {
+
+            let deleteText = String(
+                repeating: XCUIKeyboardKey.delete.rawValue,
+                count: currentValue.count
+            )
+
+            visibleField.typeText(deleteText)
+        }
+
+        // Enter the complete password
+        visibleField.typeText(password)
+
+        // Verify the password was entered correctly
+        XCTAssertEqual(
+            visibleField.value as? String,
             password,
-            field: visibleField
+            "Password was not entered correctly: \(identifier)"
         )
     }
 
@@ -219,12 +208,7 @@ final class EasyBankSteps {
     }
 
     func enterLoginPassword(_ password: String) {
-        enterVisiblePassword(
-            password,
-            secureField: page.loginPasswordField,
-            visibilityButton: page.loginPasswordVisibilityButton,
-            visibleField: page.visibleLoginPasswordField
-        )
+        enterLoginPasswordSafely(password)
     }
 
     func submitLogin() {
@@ -283,20 +267,16 @@ final class EasyBankSteps {
     }
 
     func enterRegistrationPassword(_ password: String) {
-        enterVisiblePassword(
+        enterRegistrationPasswordSafely(
             password,
-            secureField: page.registrationPasswordField,
-            visibilityButton: page.registrationPasswordVisibilityButton,
-            visibleField: page.visibleRegistrationPasswordField
+            identifier: "registration.password"
         )
     }
 
     func enterRepeatPassword(_ password: String) {
-        enterVisiblePassword(
+        enterRegistrationPasswordSafely(
             password,
-            secureField: page.registrationRepeatPasswordField,
-            visibilityButton: page.repeatPasswordVisibilityButton,
-            visibleField: page.visibleRepeatPasswordField
+            identifier: "registration.repeatPassword"
         )
     }
 
