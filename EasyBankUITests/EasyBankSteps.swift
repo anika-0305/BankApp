@@ -13,10 +13,11 @@ final class EasyBankSteps {
 
     // MARK: - Common Helpers
 
-    private func tap(_ element: XCUIElement) {
+    @discardableResult
+    private func tap(_ element: XCUIElement) -> Bool {
         guard element.waitForExistence(timeout: 15) else {
             XCTFail("Element was not found: \(element)")
-            return
+            return false
         }
 
         if !element.isHittable {
@@ -25,38 +26,29 @@ final class EasyBankSteps {
 
         guard element.isHittable else {
             XCTFail("Element is not hittable: \(element)")
-            return
+            return false
         }
 
         element.tap()
+        return true
     }
 
     private func enterText(
         _ text: String,
         into element: XCUIElement
     ) {
-        guard element.waitForExistence(timeout: 15) else {
-            XCTFail("Text field was not found: \(element)")
-            return
-        }
-
-        tap(element)
-
-        guard element.isHittable else {
-            XCTFail("Text field is not hittable: \(element)")
-            return
-        }
+        guard tap(element) else { return }
 
         if let currentValue = element.value as? String,
            !currentValue.isEmpty,
            currentValue != element.placeholderValue {
 
-            let deleteString = String(
+            let deleteText = String(
                 repeating: XCUIKeyboardKey.delete.rawValue,
                 count: currentValue.count
             )
 
-            element.typeText(deleteString)
+            element.typeText(deleteText)
         }
 
         element.typeText(text)
@@ -74,16 +66,15 @@ final class EasyBankSteps {
             doneButton.tap()
         } else if returnButton.exists && returnButton.isHittable {
             returnButton.tap()
-        } else {
-            app.swipeDown()
         }
     }
+
+    // MARK: - Strong Password Prompt
 
     private func dismissStrongPasswordPromptIfPresent() {
         let closeButton = app.buttons["Close"]
 
-        if closeButton.waitForExistence(timeout: 2),
-           closeButton.isHittable {
+        if closeButton.exists && closeButton.isHittable {
             closeButton.tap()
         }
     }
@@ -101,27 +92,57 @@ final class EasyBankSteps {
             return
         }
 
-        tap(secureField)
+        // Focus password field
+        guard tap(secureField) else { return }
+
+        // Dismiss iOS password suggestion
         dismissStrongPasswordPromptIfPresent()
 
-        // The reference shows a nested button labeled "hide".
-        // Tapping it is expected to change password visibility.
-        if visibilityButton.exists && visibilityButton.isHittable {
-            visibilityButton.tap()
+        // Locate the visibility control
+        guard visibilityButton.waitForExistence(timeout: 10) else {
+            XCTFail("Password visibility button was not found")
+            return
         }
 
-        if visibleField.waitForExistence(timeout: 5) {
-            enterText(password, into: visibleField)
-        } else {
-            // Fallback when the control remains a SecureTextField.
-            enterText(password, into: secureField)
+        guard visibilityButton.isHittable else {
+            XCTFail("Password visibility button is not hittable")
+            return
         }
+
+        // Turn password visibility on
+        visibilityButton.tap()
+
+        // Use the field after visibility changes
+        guard visibleField.waitForExistence(timeout: 10) else {
+            XCTFail(
+                "Password did not become a visible TextField"
+            )
+            return
+        }
+
+        guard visibleField.isHittable else {
+            XCTFail("Visible password field is not hittable")
+            return
+        }
+
+        // Type password into visible field
+        visibleField.tap()
+        visibleField.typeText(password)
+
+        // Verify the actual entered value
+        XCTAssertEqual(
+            visibleField.value as? String,
+            password,
+            "Password was not entered correctly"
+        )
     }
 
     // MARK: - Onboarding
 
     func openLoginScreen() {
-        tap(page.onboardingLoginButton)
+        guard tap(page.onboardingLoginButton) else {
+            return
+        }
 
         XCTAssertTrue(
             page.loginEmailField.waitForExistence(timeout: 15),
@@ -130,7 +151,9 @@ final class EasyBankSteps {
     }
 
     func openRegistrationScreen() {
-        tap(page.onboardingRegisterButton)
+        guard tap(page.onboardingRegisterButton) else {
+            return
+        }
 
         XCTAssertTrue(
             page.registrationEmailField.waitForExistence(timeout: 15),
@@ -141,7 +164,10 @@ final class EasyBankSteps {
     // MARK: - Login
 
     func enterLoginEmail(_ email: String) {
-        enterText(email, into: page.loginEmailField)
+        enterText(
+            email,
+            into: page.loginEmailField
+        )
     }
 
     func enterLoginPassword(_ password: String) {
@@ -158,7 +184,10 @@ final class EasyBankSteps {
         tap(page.loginSubmitButton)
     }
 
-    func login(email: String, password: String) {
+    func login(
+        email: String,
+        password: String
+    ) {
         enterLoginEmail(email)
         enterLoginPassword(password)
         submitLogin()
@@ -167,7 +196,9 @@ final class EasyBankSteps {
     // MARK: - Login Assertions
 
     func verifyInvalidEmailError() {
-        verifyLoginError(contains: "badly formatted")
+        verifyLoginError(
+            contains: "badly formatted"
+        )
     }
 
     func verifyInvalidCredentialsError() {
@@ -176,24 +207,31 @@ final class EasyBankSteps {
         )
     }
 
-    private func verifyLoginError(contains text: String) {
+    private func verifyLoginError(
+        contains expectedText: String
+    ) {
         let error = page.loginErrorMessage
 
         guard error.waitForExistence(timeout: 15) else {
-            XCTFail("Authentication error was not displayed")
+            XCTFail("Login error was not displayed")
             return
         }
 
         XCTAssertTrue(
-            error.label.localizedCaseInsensitiveContains(text),
-            "Expected '\(text)', got '\(error.label)'"
+            error.label.localizedCaseInsensitiveContains(
+                expectedText
+            ),
+            "Unexpected login error: \(error.label)"
         )
     }
 
     // MARK: - Registration
 
     func enterRegistrationEmail(_ email: String) {
-        enterText(email, into: page.registrationEmailField)
+        enterText(
+            email,
+            into: page.registrationEmailField
+        )
     }
 
     func enterRegistrationPassword(_ password: String) {
@@ -219,14 +257,17 @@ final class EasyBankSteps {
         tap(page.registrationSubmitButton)
     }
 
-    func register(email: String, password: String) {
+    func register(
+        email: String,
+        password: String
+    ) {
         enterRegistrationEmail(email)
         enterRegistrationPassword(password)
         enterRepeatPassword(password)
         submitRegistration()
     }
 
-    // MARK: - Home
+    // MARK: - Home Assertions
 
     func verifyHomeScreen() {
         XCTAssertTrue(
@@ -238,14 +279,18 @@ final class EasyBankSteps {
     // MARK: - Logout
 
     func logout() {
-        tap(page.logoutButton)
-
-        guard page.logoutAlert.waitForExistence(timeout: 10) else {
-            XCTFail("Logout alert was not displayed")
+        guard tap(page.logoutButton) else {
             return
         }
 
-        tap(page.confirmLogoutButton)
+        guard page.logoutAlert.waitForExistence(timeout: 10) else {
+            XCTFail("Logout confirmation was not displayed")
+            return
+        }
+
+        guard tap(page.confirmLogoutButton) else {
+            return
+        }
 
         XCTAssertTrue(
             page.loginEmailField.waitForExistence(timeout: 15),
@@ -253,7 +298,7 @@ final class EasyBankSteps {
         )
     }
 
-    // MARK: - Reusable Flow
+    // MARK: - Complete Registration Flow
 
     func registerLogoutAndLogin(
         email: String,
@@ -261,13 +306,19 @@ final class EasyBankSteps {
     ) {
         openRegistrationScreen()
 
-        register(email: email, password: password)
+        register(
+            email: email,
+            password: password
+        )
 
         verifyHomeScreen()
 
         logout()
 
-        login(email: email, password: password)
+        login(
+            email: email,
+            password: password
+        )
 
         verifyHomeScreen()
     }

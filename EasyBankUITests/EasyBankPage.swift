@@ -97,7 +97,7 @@ final class EasyBankPage {
         app.buttons["home.logout"]
     }
 
-    // MARK: - Logout Confirmation
+    // MARK: - Logout
 
     var logoutAlert: XCUIElement {
         app.alerts["Logging Out"]
