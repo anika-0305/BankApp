@@ -1,4 +1,4 @@
-~
+
 import XCTest
 
 final class EasyBankSteps {
@@ -18,6 +18,10 @@ final class EasyBankSteps {
         guard element.waitForExistence(timeout: 15) else {
             XCTFail("Element was not found: \(element)")
             return false
+        }
+
+        if !element.isHittable {
+            dismissKeyboard()
         }
 
         guard element.isHittable else {
@@ -65,7 +69,7 @@ final class EasyBankSteps {
         }
     }
 
-    // MARK: - Strong Password Prompt
+    // MARK: - Strong Password
 
     private func dismissStrongPasswordPromptIfPresent() {
         let closeButton = app.buttons["Close"]
@@ -75,55 +79,14 @@ final class EasyBankSteps {
         }
     }
 
-    // MARK: - Login Password
-
-    private func enterLoginPasswordSafely(
-        _ password: String
-    ) {
-        let secureField = page.loginPasswordField
-
-        guard secureField.waitForExistence(timeout: 15) else {
-            XCTFail("Login password field was not found")
-            return
-        }
-
-        guard tap(secureField) else { return }
-
-        dismissStrongPasswordPromptIfPresent()
-
-        let visibilityButton =
-            page.loginPasswordVisibilityButton
-
-        guard visibilityButton.waitForExistence(timeout: 10),
-              visibilityButton.isHittable else {
-            XCTFail("Login visibility button was not found")
-            return
-        }
-
-        visibilityButton.tap()
-
-        let visibleField = page.visibleLoginPasswordField
-
-        guard visibleField.waitForExistence(timeout: 10) else {
-            XCTFail("Visible login password field was not found")
-            return
-        }
-
-        guard tap(visibleField) else { return }
-
-        visibleField.typeText(password)
-    }
-
-    // MARK: - Registration Password
-
-    private func enterRegistrationPasswordSafely(
+    private func enterVisiblePassword(
         _ password: String,
-        identifier: String
+        secureField: XCUIElement,
+        visibilityButton: XCUIElement,
+        visibleField: XCUIElement
     ) {
-        let secureField = app.secureTextFields[identifier]
-
         guard secureField.waitForExistence(timeout: 15) else {
-            XCTFail("Registration password field not found: \(identifier)")
+            XCTFail("Password field was not found")
             return
         }
 
@@ -131,55 +94,38 @@ final class EasyBankSteps {
 
         dismissStrongPasswordPromptIfPresent()
 
-        let visibilityButton = secureField.buttons["hide"]
-
         guard visibilityButton.waitForExistence(timeout: 10),
               visibilityButton.isHittable else {
-            XCTFail("Password visibility button not found: \(identifier)")
+            XCTFail("Password visibility button was not found")
             return
         }
 
         visibilityButton.tap()
 
-        let visibleField = app.textFields[identifier]
-
         guard visibleField.waitForExistence(timeout: 10) else {
-            XCTFail("Visible password field not found: \(identifier)")
+            XCTFail("Password did not become a visible TextField")
             return
         }
 
-        guard tap(visibleField) else { return }
-
-        // Clear existing autofilled value
-        if let currentValue = visibleField.value as? String,
-           !currentValue.isEmpty,
-           currentValue != visibleField.placeholderValue {
-
-            let deleteText = String(
-                repeating: XCUIKeyboardKey.delete.rawValue,
-                count: currentValue.count
-            )
-
-            visibleField.typeText(deleteText)
+        guard visibleField.isHittable else {
+            XCTFail("Visible password field is not hittable")
+            return
         }
 
-        // Enter the complete password
+        visibleField.tap()
         visibleField.typeText(password)
 
-        // Verify the password was entered correctly
         XCTAssertEqual(
             visibleField.value as? String,
             password,
-            "Password was not entered correctly: \(identifier)"
+            "Password was not entered correctly"
         )
     }
 
     // MARK: - Onboarding
 
     func openLoginScreen() {
-        guard tap(page.onboardingLoginButton) else {
-            return
-        }
+        guard tap(page.onboardingLoginButton) else { return }
 
         XCTAssertTrue(
             page.loginEmailField.waitForExistence(timeout: 15),
@@ -188,9 +134,7 @@ final class EasyBankSteps {
     }
 
     func openRegistrationScreen() {
-        guard tap(page.onboardingRegisterButton) else {
-            return
-        }
+        guard tap(page.onboardingRegisterButton) else { return }
 
         XCTAssertTrue(
             page.registrationEmailField.waitForExistence(timeout: 15),
@@ -201,14 +145,16 @@ final class EasyBankSteps {
     // MARK: - Login
 
     func enterLoginEmail(_ email: String) {
-        enterText(
-            email,
-            into: page.loginEmailField
-        )
+        enterText(email, into: page.loginEmailField)
     }
 
     func enterLoginPassword(_ password: String) {
-        enterLoginPasswordSafely(password)
+        enterVisiblePassword(
+            password,
+            secureField: page.loginPasswordField,
+            visibilityButton: page.loginPasswordVisibilityButton,
+            visibleField: page.visibleLoginPasswordField
+        )
     }
 
     func submitLogin() {
@@ -216,10 +162,7 @@ final class EasyBankSteps {
         tap(page.loginSubmitButton)
     }
 
-    func login(
-        email: String,
-        password: String
-    ) {
+    func login(email: String, password: String) {
         enterLoginEmail(email)
         enterLoginPassword(password)
         submitLogin()
@@ -228,20 +171,14 @@ final class EasyBankSteps {
     // MARK: - Login Assertions
 
     func verifyInvalidEmailError() {
-        verifyLoginError(
-            contains: "badly formatted"
-        )
+        verifyLoginError(contains: "badly formatted")
     }
 
     func verifyInvalidCredentialsError() {
-        verifyLoginError(
-            contains: "malformed or has expired"
-        )
+        verifyLoginError(contains: "malformed or has expired")
     }
 
-    private func verifyLoginError(
-        contains expectedText: String
-    ) {
+    private func verifyLoginError(contains expectedText: String) {
         let error = page.loginErrorMessage
 
         guard error.waitForExistence(timeout: 15) else {
@@ -250,9 +187,7 @@ final class EasyBankSteps {
         }
 
         XCTAssertTrue(
-            error.label.localizedCaseInsensitiveContains(
-                expectedText
-            ),
+            error.label.localizedCaseInsensitiveContains(expectedText),
             "Unexpected login error: \(error.label)"
         )
     }
@@ -260,23 +195,24 @@ final class EasyBankSteps {
     // MARK: - Registration
 
     func enterRegistrationEmail(_ email: String) {
-        enterText(
-            email,
-            into: page.registrationEmailField
-        )
+        enterText(email, into: page.registrationEmailField)
     }
 
     func enterRegistrationPassword(_ password: String) {
-        enterRegistrationPasswordSafely(
+        enterVisiblePassword(
             password,
-            identifier: "registration.password"
+            secureField: page.registrationPasswordField,
+            visibilityButton: page.registrationPasswordVisibilityButton,
+            visibleField: page.visibleRegistrationPasswordField
         )
     }
 
     func enterRepeatPassword(_ password: String) {
-        enterRegistrationPasswordSafely(
+        enterVisiblePassword(
             password,
-            identifier: "registration.repeatPassword"
+            secureField: page.registrationRepeatPasswordField,
+            visibilityButton: page.repeatPasswordVisibilityButton,
+            visibleField: page.visibleRepeatPasswordField
         )
     }
 
@@ -285,10 +221,7 @@ final class EasyBankSteps {
         tap(page.registrationSubmitButton)
     }
 
-    func register(
-        email: String,
-        password: String
-    ) {
+    func register(email: String, password: String) {
         enterRegistrationEmail(email)
         enterRegistrationPassword(password)
         enterRepeatPassword(password)
@@ -307,18 +240,14 @@ final class EasyBankSteps {
     // MARK: - Logout
 
     func logout() {
-        guard tap(page.logoutButton) else {
-            return
-        }
+        guard tap(page.logoutButton) else { return }
 
         guard page.logoutAlert.waitForExistence(timeout: 10) else {
             XCTFail("Logout confirmation was not displayed")
             return
         }
 
-        guard tap(page.confirmLogoutButton) else {
-            return
-        }
+        guard tap(page.confirmLogoutButton) else { return }
 
         XCTAssertTrue(
             page.loginEmailField.waitForExistence(timeout: 15),
@@ -326,7 +255,7 @@ final class EasyBankSteps {
         )
     }
 
-    // MARK: - Complete Registration Flow
+    // MARK: - Complete Flow
 
     func registerLogoutAndLogin(
         email: String,
@@ -334,19 +263,13 @@ final class EasyBankSteps {
     ) {
         openRegistrationScreen()
 
-        register(
-            email: email,
-            password: password
-        )
+        register(email: email, password: password)
 
         verifyHomeScreen()
 
         logout()
 
-        login(
-            email: email,
-            password: password
-        )
+        login(email: email, password: password)
 
         verifyHomeScreen()
     }
