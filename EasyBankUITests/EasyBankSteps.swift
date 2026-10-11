@@ -56,7 +56,6 @@ final class EasyBankSteps {
 
     private func dismissKeyboard() {
         let keyboard = app.keyboards.firstMatch
-
         guard keyboard.exists else { return }
 
         let doneButton = keyboard.buttons["Done"]
@@ -74,10 +73,14 @@ final class EasyBankSteps {
     private func dismissStrongPasswordPromptIfPresent() {
         let closeButton = app.buttons["Close"]
 
-        if closeButton.exists && closeButton.isHittable {
+        if closeButton.waitForExistence(timeout: 2),
+           closeButton.isHittable {
             closeButton.tap()
         }
     }
+
+    // MARK: - Login Password
+    // Preserve the previously passing login behavior.
 
     private func enterVisiblePassword(
         _ password: String,
@@ -103,7 +106,7 @@ final class EasyBankSteps {
         visibilityButton.tap()
 
         guard visibleField.waitForExistence(timeout: 10) else {
-            XCTFail("Password did not become a visible TextField")
+            XCTFail("Visible password field was not found")
             return
         }
 
@@ -119,6 +122,95 @@ final class EasyBankSteps {
             visibleField.value as? String,
             password,
             "Password was not entered correctly"
+        )
+    }
+
+    // MARK: - Registration Password
+
+    private func enterRegistrationPasswordWithRecovery(
+        _ password: String,
+        identifier: String
+    ) {
+        let secureField = app.secureTextFields[identifier]
+
+        guard secureField.waitForExistence(timeout: 15) else {
+            XCTFail("Registration password field not found: \(identifier)")
+            return
+        }
+
+        guard tap(secureField) else { return }
+
+        dismissStrongPasswordPromptIfPresent()
+
+        let visibilityButton = secureField.buttons["hide"]
+
+        guard visibilityButton.waitForExistence(timeout: 10),
+              visibilityButton.isHittable else {
+            XCTFail("Visibility button not found: \(identifier)")
+            return
+        }
+
+        visibilityButton.tap()
+
+        var visibleField = app.textFields[identifier]
+
+        guard visibleField.waitForExistence(timeout: 10) else {
+            XCTFail("Visible password field not found: \(identifier)")
+            return
+        }
+
+        guard tap(visibleField) else { return }
+
+        // Enter the password in one operation first.
+        visibleField.typeText(password)
+
+        // Re-query after SwiftUI updates the field.
+        visibleField = app.textFields[identifier]
+
+        if visibleField.value as? String == password {
+            return
+        }
+
+        // Recover if only a prefix was entered.
+        for _ in 0..<3 {
+            visibleField = app.textFields[identifier]
+
+            guard visibleField.waitForExistence(timeout: 5) else {
+                break
+            }
+
+            guard let currentValue = visibleField.value as? String else {
+                break
+            }
+
+            if currentValue == password {
+                return
+            }
+
+            guard password.hasPrefix(currentValue),
+                  currentValue.count < password.count else {
+                break
+            }
+
+            let remaining = String(
+                password.dropFirst(currentValue.count)
+            )
+
+            guard tap(visibleField) else { return }
+
+            visibleField.typeText(remaining)
+
+            if app.textFields[identifier].value as? String == password {
+                return
+            }
+        }
+
+        visibleField = app.textFields[identifier]
+
+        XCTAssertEqual(
+            visibleField.value as? String,
+            password,
+            "Registration password was not entered correctly: \(identifier)"
         )
     }
 
@@ -199,20 +291,16 @@ final class EasyBankSteps {
     }
 
     func enterRegistrationPassword(_ password: String) {
-        enterVisiblePassword(
+        enterRegistrationPasswordWithRecovery(
             password,
-            secureField: page.registrationPasswordField,
-            visibilityButton: page.registrationPasswordVisibilityButton,
-            visibleField: page.visibleRegistrationPasswordField
+            identifier: "registration.password"
         )
     }
 
     func enterRepeatPassword(_ password: String) {
-        enterVisiblePassword(
+        enterRegistrationPasswordWithRecovery(
             password,
-            secureField: page.registrationRepeatPasswordField,
-            visibilityButton: page.repeatPasswordVisibilityButton,
-            visibleField: page.visibleRepeatPasswordField
+            identifier: "registration.repeatPassword"
         )
     }
 
@@ -255,7 +343,7 @@ final class EasyBankSteps {
         )
     }
 
-    // MARK: - Complete Flow
+    // MARK: - Complete Registration Flow
 
     func registerLogoutAndLogin(
         email: String,
