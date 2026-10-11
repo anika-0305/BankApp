@@ -68,13 +68,12 @@ final class EasyBankSteps {
         }
     }
 
-    // MARK: - Strong Password
+    // MARK: - Strong Password Prompt
 
     private func dismissStrongPasswordPromptIfPresent() {
         let closeButton = app.buttons["Close"]
 
-        if closeButton.waitForExistence(timeout: 2),
-           closeButton.isHittable {
+        if closeButton.exists && closeButton.isHittable {
             closeButton.tap()
         }
     }
@@ -126,8 +125,9 @@ final class EasyBankSteps {
     }
 
     // MARK: - Registration Password
+    // Enable visibility before focusing the field.
 
-    private func enterRegistrationPasswordWithRecovery(
+    private func enterRegistrationPasswordWithoutFocusReset(
         _ password: String,
         identifier: String
     ) {
@@ -138,21 +138,23 @@ final class EasyBankSteps {
             return
         }
 
-        guard tap(secureField) else { return }
-
-        dismissStrongPasswordPromptIfPresent()
-
         let visibilityButton = secureField.buttons["hide"]
 
-        guard visibilityButton.waitForExistence(timeout: 10),
-              visibilityButton.isHittable else {
+        guard visibilityButton.waitForExistence(timeout: 10) else {
             XCTFail("Visibility button not found: \(identifier)")
             return
         }
 
+        guard visibilityButton.isHittable else {
+            XCTFail("Visibility button is not hittable: \(identifier)")
+            return
+        }
+
+        // Toggle visibility without focusing SecureTextField.
         visibilityButton.tap()
 
-        var visibleField = app.textFields[identifier]
+        // Re-query the field after changing isSecureTextEntry.
+        let visibleField = app.textFields[identifier]
 
         guard visibleField.waitForExistence(timeout: 10) else {
             XCTFail("Visible password field not found: \(identifier)")
@@ -161,54 +163,26 @@ final class EasyBankSteps {
 
         guard tap(visibleField) else { return }
 
-        // Enter the password in one operation first.
-        visibleField.typeText(password)
+        dismissStrongPasswordPromptIfPresent()
 
-        // Re-query after SwiftUI updates the field.
-        visibleField = app.textFields[identifier]
+        // Clear existing text, excluding placeholder.
+        if let currentValue = visibleField.value as? String,
+           !currentValue.isEmpty,
+           currentValue != visibleField.placeholderValue {
 
-        if visibleField.value as? String == password {
-            return
-        }
-
-        // Recover if only a prefix was entered.
-        for _ in 0..<3 {
-            visibleField = app.textFields[identifier]
-
-            guard visibleField.waitForExistence(timeout: 5) else {
-                break
-            }
-
-            guard let currentValue = visibleField.value as? String else {
-                break
-            }
-
-            if currentValue == password {
-                return
-            }
-
-            guard password.hasPrefix(currentValue),
-                  currentValue.count < password.count else {
-                break
-            }
-
-            let remaining = String(
-                password.dropFirst(currentValue.count)
+            let deleteText = String(
+                repeating: XCUIKeyboardKey.delete.rawValue,
+                count: currentValue.count
             )
 
-            guard tap(visibleField) else { return }
-
-            visibleField.typeText(remaining)
-
-            if app.textFields[identifier].value as? String == password {
-                return
-            }
+            visibleField.typeText(deleteText)
         }
 
-        visibleField = app.textFields[identifier]
+        // Enter password after visibility is enabled.
+        visibleField.typeText(password)
 
         XCTAssertEqual(
-            visibleField.value as? String,
+            app.textFields[identifier].value as? String,
             password,
             "Registration password was not entered correctly: \(identifier)"
         )
@@ -291,14 +265,14 @@ final class EasyBankSteps {
     }
 
     func enterRegistrationPassword(_ password: String) {
-        enterRegistrationPasswordWithRecovery(
+        enterRegistrationPasswordWithoutFocusReset(
             password,
             identifier: "registration.password"
         )
     }
 
     func enterRepeatPassword(_ password: String) {
-        enterRegistrationPasswordWithRecovery(
+        enterRegistrationPasswordWithoutFocusReset(
             password,
             identifier: "registration.repeatPassword"
         )
